@@ -170,46 +170,51 @@ const ask = function (question, mask) {
 
   console.log('正在验证用户...')
 
-  let loginUrl = ''
+  let userId
   try {
-    await client.post('https://auth.pconline.com.cn/security-server/auth.do', {
-      form: true,
-      body: formData
+    let loginUrl = ''
+    try {
+      await client.post('https://auth.pconline.com.cn/security-server/auth.do', {
+        form: true,
+        body: formData
+      })
+    } catch (error) {
+      if (error.statusCode === 302 && error.headers.location) {
+        loginUrl = error.headers.location
+      }
+    }
+
+    let loginRes
+    try {
+      loginRes = await got.post(loginUrl)
+    } catch (error) {
+      if (error.statusCode === 302) {
+        loginRes = error
+      }
+    }
+
+    const cookie = loginRes.headers['set-cookie']
+
+    const oaSession = cookie[0].match(/oa-session=[^;]+/g)[0].replace('oa-session=', '')
+    const jSessionId = cookie[1].match(/JSESSIONID=[^;]+/g)[0].replace('JSESSIONID=', '')
+
+    client = client.extend({
+      headers: {
+        cookie: `oa-session=${oaSession};JSESSIONID=${jSessionId};dwz_theme=silver;`
+      }
     })
+
+    const {
+      body: userBody
+    } = await client.get('/kaoqin/absence/new.do')
+
+    let $ = cheerio.load(userBody)
+    userId = $('.pageFormContent').find('input').eq(1).val()
+
+    console.log('验证用户成功')
   } catch (error) {
-    if (error.statusCode === 302 && error.headers.location) {
-      loginUrl = error.headers.location
-    }
+    return console.error('验证用户不成功，请检查账号密码')
   }
-
-  let loginRes
-  try {
-    loginRes = await got.post(loginUrl)
-  } catch (error) {
-    if (error.statusCode === 302) {
-      loginRes = error
-    }
-  }
-
-  const cookie = loginRes.headers['set-cookie']
-
-  const oaSession = cookie[0].match(/oa-session=[^;]+/g)[0].replace('oa-session=', '')
-  const jSessionId = cookie[1].match(/JSESSIONID=[^;]+/g)[0].replace('JSESSIONID=', '')
-
-  client = client.extend({
-    headers: {
-      cookie: `oa-session=${oaSession};JSESSIONID=${jSessionId};dwz_theme=silver;`
-    }
-  })
-
-  const {
-    body: userBody
-  } = await client.get('/kaoqin/absence/new.do')
-
-  let $ = cheerio.load(userBody)
-  const userId = $('.pageFormContent').find('input').eq(1).val()
-
-  console.log('验证用户成功')
 
   console.log('正在查询调休...\n')
   await outputCompensatoryLeave(client, userId)
