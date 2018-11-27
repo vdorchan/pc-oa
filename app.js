@@ -8,10 +8,21 @@ const chalk = require('chalk')
 const fs = require('fs')
 const path = require('path')
 const homedir = require('os').homedir()
+const readline = require('readline')
 
-const {
-  table
-} = require('table')
+const styleTitle = title => {
+  const len = (50 - title.length) / 2
+  return chalk.green(`${'='.repeat(Math.floor(len))} ${title} ${'='.repeat(Math.ceil(len))}`)
+}
+
+const loading = msg => process.stdout.write(msg)
+
+const clearLoading = msg => {
+  readline.cursorTo(process.stdout, 0)
+  readline.clearLine(process.stdout, 0)
+  readline.cursorTo(process.stdout, 0)
+  msg && console.log(msg)
+}
 
 const outputCompensatoryLeave = async (client, userId) => {
   let {
@@ -24,31 +35,39 @@ const outputCompensatoryLeave = async (client, userId) => {
 
   let totalTime = 0
 
-  const tableList = [
-    ['开始加班', '结束时间', '截止时间', '总共可休', '还剩', '事由']
-  ]
+  // const tableList = [
+  //   ['开始加班', '结束时间', '截止时间', '总共可休', '还剩', '事由']
+  // ]
+
+  let output = ''
 
   $('.table tbody').find('tr').each((idx, el) => {
     const $td = $(el).find('td')
     const tdText = i => $td.eq(i).text()
 
-    tableList.push([
-      tdText(1),
-      tdText(2),
-      tdText(3),
-      tdText(4),
-      chalk.cyan(tdText(5)),
-      tdText(6)
-    ])
+    output += `
+可休 ${chalk.cyan(tdText(5))} 截止到 ${chalk.red(tdText(3))} 前可用
+从${tdText(1)} 加班到 ${tdText(2)}（${tdText(4)}）
+事由：${chalk.gray(tdText(6))}
+`
+    // tableList.push([
+    //   tdText(1),
+    //   tdText(2),
+    //   tdText(3),
+    //   tdText(4),
+    //   chalk.cyan(tdText(5)),
+    //   tdText(6)
+    // ])
 
     try {
       totalTime += parseFloat(tdText(5).match(/\S+h/g)[0])
     } catch (error) {}
   })
 
-  console.log(`调休：\n当前可调休 ${chalk.cyan(`${totalTime}(${Math.round(totalTime * 100 / 8) / 100})`)} 小时`)
+  clearLoading(`${styleTitle('调休')}\n
+当前总共可调休 ${chalk.cyan(`${totalTime}(${Math.round(totalTime * 100 / 8) / 100})`)} 小时`)
 
-  const output = table(tableList)
+  // const output = table(tableList)
 
   console.log(output)
 }
@@ -69,7 +88,7 @@ const outputAnnualLeave = async (client, userId) => {
     }
   })
 
-  console.log(`年假：
+  clearLoading(`${styleTitle('年假')}\n
 截止到当前，总共还剩 ${chalk.cyan(realRemain)} 天年假可休
 去年 ${chalk.cyan(lastYearRemainNianJia)} 天 + 今年 ${chalk.cyan(remain)} 天
 `)
@@ -91,7 +110,7 @@ const outputPunchRecord = async (client, userId) => {
   const $th = $tr.find('th')
   const $td = $tr.find('td')
 
-  console.log('出勤状况\n')
+  clearLoading(`${styleTitle('出勤状况')}\n`)
 
   $th.each((i, elem) => {
     if (i >= 2) {
@@ -99,7 +118,7 @@ const outputPunchRecord = async (client, userId) => {
     }
   })
 
-  console.log('异常打卡记录:')
+  console.log(`\n${styleTitle('异常打卡记录')}`)
 
   $('.table').find('tr').each(function () {
     const $td = $(this).find('td')
@@ -130,7 +149,7 @@ const outputPunchRecord = async (client, userId) => {
 }
 
 const ask = function (question, mask) {
-  const rl = require('readline').createInterface({
+  const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     historySize: 0
@@ -168,7 +187,7 @@ const ask = function (question, mask) {
     return: 'https://oa.pc.com.cn/login.do'
   }, user)
 
-  console.log('正在验证用户...')
+  loading('登录中...')
 
   let userId
   try {
@@ -211,17 +230,17 @@ const ask = function (question, mask) {
     let $ = cheerio.load(userBody)
     userId = $('.pageFormContent').find('input').eq(1).val()
 
-    console.log('验证用户成功')
+    clearLoading('登录成功！')
   } catch (error) {
     return console.error('验证用户不成功，请检查账号密码')
   }
 
-  console.log('正在查询调休...\n')
+  loading('正在查询调休...')
   await outputCompensatoryLeave(client, userId)
 
-  console.log('正在查询年假...\n')
+  loading('正在查询年假...')
   await outputAnnualLeave(client, userId)
 
-  console.log('正在查询打卡记录...\n')
+  loading('正在查询打卡记录...')
   await outputPunchRecord(client)
 })()
